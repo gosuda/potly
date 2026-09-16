@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "potly",
   "version": "0.1.0",
-  "description": "Deploy potly, a tiny agent-friendly URL shortener, and shorten long links (dashboards, reports) through it.",
+  "description": "A self-deployable, agent-friendly URL shortener.",
   "author": {
     "name": "yoonhyunwoo"
   },

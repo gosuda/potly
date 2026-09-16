@@ -172,6 +172,9 @@ func newMux(s *store) *http.ServeMux {
 
 func main() {
 	portalMode := flag.Bool("portal", false, "expose via an embedded Portal tunnel instead of only listening on :8000")
+	name := flag.String("name", "potly", "Portal app name used in public URLs (portal mode)")
+	hide := flag.Bool("hide", false, "hide the app from Portal's public listing; the URL still works (portal mode)")
+	relays := flag.String("relays", "", "comma-separated Portal relay URLs to expose through, e.g. https://gosunuts.xyz (portal mode)")
 	flag.Parse()
 
 	mux := newMux(newStore())
@@ -179,7 +182,15 @@ func main() {
 		http.ListenAndServe(":8000", mux)
 		return
 	}
-	if err := runPortal(mux); err != nil {
+	var relayURLs []string
+	if *relays != "" {
+		for _, r := range strings.Split(*relays, ",") {
+			if r = strings.TrimSpace(r); r != "" {
+				relayURLs = append(relayURLs, r)
+			}
+		}
+	}
+	if err := runPortal(mux, *name, *hide, relayURLs); err != nil {
 		log.Fatal(err)
 	}
 }

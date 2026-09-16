@@ -1,6 +1,6 @@
 ---
 name: potly
-description: Deploy potly (a tiny Go URL shortener exposed publicly through an embedded Portal tunnel) and shorten long URLs — dashboard links, reports, anything unwieldy — through it. Use when the user asks to run or deploy potly, or asks to shorten a link and this repo's potly server is available.
+description: Deploy potly (a tiny Go URL shortener exposed publicly through an embedded Portal tunnel) or reuse the official instance on Portal's public relays, and shorten long URLs — dashboard links, reports, anything unwieldy — through it. Use when the user asks to run or deploy potly, or asks to shorten a link and a potly server is available.
 license: MIT
 ---
 
@@ -8,15 +8,45 @@ license: MIT
 
 potly is a single-binary URL shortener (`main.go` + `portal.go` in this repo). It embeds Portal's Go SDK directly, so one process is both the local server and the public tunnel — no separate `portal` CLI needed.
 
-## Deploy
+## Pick a mode first
+
+Ask the user which mode to use before doing anything:
+
+1. **Self-deploy** — run potly from this repo. Ask two things here:
+   - **App name**: the Portal app name defaults to `potly`; if the user names one, use theirs instead.
+   - **Visibility**: listed publicly on Portal, or hidden (`-hide`) so the URL works but the app stays out of Portal's listing. Default is listed.
+2. **Official instance** — reuse a potly already published on Portal's public relay network at `https://potly.<relay-domain>`. Nothing to deploy; skip straight to "Shorten a URL".
+
+If the user doesn't answer, default to self-deploy.
+
+## Official instance
+
+Probe `https://potly.<relay-domain>/` for each of Portal's bootstrap relay domains and use the first one that serves the potly page:
+
+- gosunuts.xyz
+- portal.thumbgo.kr
+- portal.rabbitson87.dev
+- s-h.day
+- portal.dawnfullstack.com
+- kakashit.org
+- portal.damn.it.com
+
+Shorten against whichever answers: `curl "https://potly.<relay-domain>/shorten?url=<url-encoded target>"`. If none answers, tell the user no official instance is reachable and offer self-deploy instead.
+
+## Self-deploy
 
 From this repo's directory:
 
 ```sh
-go run . -portal
+go run . -portal                        # app name "potly" (default), listed publicly
+go run . -portal -name myapp -hide      # user-chosen name, hidden from Portal's listing
 ```
 
-Watch stderr for `service ready at https://potly.<relay>` lines — those are the public URLs. It also listens locally on `http://localhost:8000`. Ctrl-C tears the tunnel down cleanly.
+`-hide` keeps the public URLs fully working; it only leaves the app out of Portal's public listing.
+
+Relays are picked automatically (one public URL per relay). Don't ask about them — only pass `-relays <url>` when the user explicitly wants a specific Portal domain.
+
+Watch stderr for `service ready at https://<name>.<relay>` lines — those are the public URLs. It also listens locally on `http://localhost:8000`. Ctrl-C tears the tunnel down cleanly.
 
 Local-only mode (no public tunnel): `go run .` — serves only `http://localhost:8000`.
 

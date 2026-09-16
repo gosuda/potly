@@ -1,5 +1,3 @@
-// Embeds Portal's Go SDK so `go run . -portal` is both the local server and
-// the public tunnel in one process, with live relay status at GET /relays.
 package main
 
 import (
@@ -20,21 +18,23 @@ import (
 var thumbnailJPEG []byte
 
 // runPortal exposes mux both locally on :8000 and publicly through Portal's
-// relay network, and registers GET /relays so the web UI can show which
-// relays are currently connected.
-func runPortal(mux *http.ServeMux) error {
+// relay network under the given app name, and registers GET /relays so the
+// web UI can show which relays are currently connected.
+func runPortal(mux *http.ServeMux, name string, hide bool, relayURLs []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	exposure, err := sdk.Expose(ctx, sdk.ExposeConfig{
+		RelayURLs:       relayURLs,
 		Discovery:       true,
 		MaxActiveRelays: 3,
-		Identity:        types.Identity{Name: "potly"},
+		Identity:        types.Identity{Name: name},
 		IdentityPath:    "identity.json",
 		Metadata: types.LeaseMetadata{
 			Description: "URL shortener",
 			Tags:        []string{"url-shortener", "tools", "agent"},
 			Thumbnail:   "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(thumbnailJPEG),
+			Hide:        hide,
 		},
 	})
 	if err != nil {
@@ -53,8 +53,7 @@ func runPortal(mux *http.ServeMux) error {
 		return out
 	}
 
-	// Only the relay list, not the whole snapshot (which repeats the
-	// data-URI thumbnail) since the web UI polls this every few seconds.
+	// relays only, not the full snapshot — that repeats the thumbnail data URI
 	mux.HandleFunc("/relays", func(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, map[string]any{"relays": exposure.Snapshot().Relays})
 	})
