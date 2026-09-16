@@ -1,0 +1,12 @@
+{
+  "name": "potly",
+  "owner": {
+    "name": "yoonhyunwoo"
+  },
+  "plugins": [
+    {
+      "name": "potly",
+      "source": "./plugins/potly"
+    }
+  ]
+}
