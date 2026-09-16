@@ -14,6 +14,9 @@ import (
 	"sync"
 )
 
+// version is overridden at release time via -ldflags "-X main.version=v0.1.0".
+var version = "dev"
+
 type store struct {
 	mu    sync.Mutex
 	links map[string]string
@@ -175,7 +178,13 @@ func main() {
 	name := flag.String("name", "potly", "Portal app name used in public URLs (portal mode)")
 	hide := flag.Bool("hide", false, "hide the app from Portal's public listing; the URL still works (portal mode)")
 	relays := flag.String("relays", "", "comma-separated Portal relay URLs to expose through, e.g. https://gosunuts.xyz (portal mode)")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	mux := newMux(newStore())
 	if !*portalMode {
