@@ -50,6 +50,8 @@ Watch stderr for `service ready at https://<name>.<relay>` lines — those are t
 
 Local-only mode (no public tunnel): `go run .` — serves only `http://localhost:8000`.
 
+Container alternative (no Go toolchain): `docker run -p 8000:8000 -v potly:/data ghcr.io/gosuda/potly -portal` — the image is published on release tags.
+
 ## Shorten a URL
 
 Check first whether a potly instance is already running (`lsof -i :8000`, or check for a `go run .` / built `potly` process) before starting a new one — don't spawn a second instance on the same port.

@@ -46,6 +46,8 @@ Portal mode is the default way to run. For local-only use, drop the flag: `./pot
 ./potly -portal -name myapp -relays https://gosunuts.xyz    # https://myapp.gosunuts.xyz
 ```
 
+No Go toolchain? Run the published image instead: `docker run -p 8000:8000 -v potly:/data ghcr.io/gosuda/potly -portal`.
+
 ## License
 
 [MIT](LICENSE).
