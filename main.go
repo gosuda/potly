@@ -7,23 +7,22 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"io"
 	"strings"
 	"sync"
 
 	"github.com/skip2/go-qrcode"
 )
 
-// version is overridden at release time via -ldflags "-X main.version=v0.1.0".
 var version = "dev"
 
 type link struct {
-	target string // redirect URL, or the payload text for secrets
-	once   bool   // burn after the reveal click
-	secret bool   // serve target as plain text instead of redirecting
+	target string
+	once   bool
+	secret bool
 }
 
 type store struct {
@@ -54,7 +53,6 @@ func (s *store) save(l link) (string, error) {
 	return "", fmt.Errorf("could not allocate a short code")
 }
 
-// saveSlug claims a caller-chosen slug; false means it is already taken.
 func (s *store) saveSlug(slug string, l link) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -65,7 +63,6 @@ func (s *store) saveSlug(slug string, l link) bool {
 	return true
 }
 
-// slugs served by this mux itself must never be claimable.
 var reservedSlugs = map[string]bool{"shorten": true, "relays": true, "qr": true, "s": true, "thumbnail.jpg": true}
 
 func validSlug(slug string) bool {
@@ -89,8 +86,6 @@ func (s *store) get(code string) (link, bool) {
 	return l, ok
 }
 
-// burn deletes a one-time link before it is served, so an aborted or
-// replayed request cannot reveal it a second time.
 func (s *store) burn(code string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -103,9 +98,6 @@ func respondJSON(w http.ResponseWriter, status int, obj any) {
 	json.NewEncoder(w).Encode(obj)
 }
 
-// shorten serves both a JSON API (POST, for programs) and a plain-text
-// GET API (GET /shorten?url=..., for a curl one-liner an agent can embed
-// straight into its output without parsing JSON).
 func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 	plain := r.Method == http.MethodGet
 	var target, slug string
@@ -178,15 +170,8 @@ func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// activeRelayBaseURLs, when running under `-portal`, lists every currently
-// connected relay's public base URL so /shorten can return one short link
-// per portal instead of just the one the request happened to arrive through.
 var activeRelayBaseURLs func() []string
 
-// publicBaseURL assumes https, since `portal expose` relays this plain-http
-// server's port as a public https:// tunnel and never forwards a scheme
-// header (it's a raw TCP relay, not an HTTP-aware proxy). Only a direct hit
-// on localhost is genuinely http.
 func publicBaseURL(r *http.Request) string {
 	host, _, _ := strings.Cut(r.Host, ":")
 	scheme := "https"
@@ -209,8 +194,6 @@ func shortenError(w http.ResponseWriter, plain bool, status int, msg string) {
 //go:embed index.html
 var indexHTML string
 
-// shortURLs returns one short link per currently connected relay, or a
-// single localhost link in local-only mode.
 func (s *store) shortURLs(r *http.Request, code string) []string {
 	bases := []string{publicBaseURL(r)}
 	if activeRelayBaseURLs != nil {
@@ -225,8 +208,6 @@ func (s *store) shortURLs(r *http.Request, code string) []string {
 	return out
 }
 
-// revealPage guards one-time links and secrets: chat previews and other
-// GET bots stop here, and only a human following the link burns it.
 const revealPage = `<!doctype html><meta charset="utf-8"><title>potly</title><p>This link works exactly once.</p><p><a href="/%s/reveal">Open it</a></p>`
 
 func (s *store) redirect(w http.ResponseWriter, r *http.Request) {
@@ -258,8 +239,6 @@ func (s *store) redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, l.target, http.StatusFound)
 }
 
-// newSecret stores a POSTed text payload and hands back a URL that
-// shows it exactly once: curl -d "$TOKEN" HOST/s
 func (s *store) newSecret(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		shortenError(w, true, http.StatusMethodNotAllowed, "POST only")
@@ -285,8 +264,6 @@ func (s *store) newSecret(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// maxQRURLLen bounds the qr endpoint's input; QR capacity itself is 2953
-// bytes at the lowest error correction, and a longer payload never scans.
 const maxQRURLLen = 2048
 
 func qrHandler(w http.ResponseWriter, r *http.Request) {
@@ -307,9 +284,6 @@ func qrHandler(w http.ResponseWriter, r *http.Request) {
 	writeQR(w, q)
 }
 
-// writeQRHTML serves the code as a plain <img> page: pixel-exact
-// rendering for a browser, since terminal line spacing puts gaps
-// between module rows that scanners may not read.
 func writeQRHTML(w http.ResponseWriter, q *qrcode.QRCode) {
 	png, err := q.PNG(320)
 	if err != nil {
@@ -320,11 +294,6 @@ func writeQRHTML(w http.ResponseWriter, q *qrcode.QRCode) {
 	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><title>potly</title><body style="margin:0;display:grid;place-items:center;height:100vh"><img alt="QR code" src="data:image/png;base64,%s"></body>`, base64.StdEncoding.EncodeToString(png))
 }
 
-// writeQR follows qrencode's ANSIUTF8 convention: light modules become
-// white glyphs, dark modules stay black (the escape's own background).
-// Only foreground colors carry the pattern, so the code survives
-// renderers that ignore background colors, and reads as black-on-white
-// on any terminal theme.
 func writeQR(w http.ResponseWriter, q *qrcode.QRCode) {
 	bm := q.Bitmap()
 	for y := 0; y < len(bm); y += 2 {

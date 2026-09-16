@@ -153,8 +153,6 @@ func TestQR(t *testing.T) {
 		t.Fatalf("Content-Type = %q", ct)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	// the renderer paints light modules as white glyphs on an explicit
-	// black background (qrencode convention); the prefix must be present
 	if !strings.Contains(string(body), "\x1b[40;37;1m") {
 		t.Fatalf("qr body missing qrencode-style ANSI prefix: %q", body[:min(200, len(body))])
 	}
@@ -191,7 +189,6 @@ func TestOneTimeLink(t *testing.T) {
 		t.Fatalf("unexpected shorten response %q", body)
 	}
 
-	// the first open is a confirm page so chat previews do not burn the link
 	resp, err = client.Get(srv.URL + "/" + code)
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +209,6 @@ func TestOneTimeLink(t *testing.T) {
 		t.Fatalf("reveal = %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 
-	// burned after the single reveal
 	resp, _ = client.Get(srv.URL + "/" + code)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("post-burn status = %d", resp.StatusCode)
