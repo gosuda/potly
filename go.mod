@@ -2,7 +2,10 @@ module potly
 
 go 1.27.0
 
-require github.com/gosuda/portal-tunnel/v2 v2.4.1
+require (
+	github.com/gosuda/portal-tunnel/v2 v2.4.1
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+)
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect

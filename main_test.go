@@ -128,4 +128,44 @@ func TestCustomSlug(t *testing.T) {
 	if !strings.Contains(string(line), "/cv") {
 		t.Fatalf("GET slug body = %q", line)
 	}
+
+	for _, reserved := range []string{"qr", "shorten"} {
+		body := fmt.Sprintf(`{"url":"https://example.com/x","slug":%q}`, reserved)
+		resp, _ = client.Post(srv.URL+"/shorten", "application/json", strings.NewReader(body))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("reserved slug %q status = %d, want 400", reserved, resp.StatusCode)
+		}
+	}
+}
+
+func TestQR(t *testing.T) {
+	srv := httptest.NewServer(newMux(newStore()))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/qr?url=" + url.QueryEscape("https://example.com/abc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("qr status = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	// unicode half-block renderer emits at least two of the three block glyphs
+	blocks := strings.Count(string(body), "█") + strings.Count(string(body), "▀") + strings.Count(string(body), "▄")
+	if blocks < 2 {
+		t.Fatalf("qr body has %d block glyphs, want a rendered code: %q", blocks, body)
+	}
+
+	resp, _ = http.Get(srv.URL + "/qr")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing url status = %d, want 400", resp.StatusCode)
+	}
+
+	resp, _ = http.Get(srv.URL + "/qr?url=" + url.QueryEscape(strings.Repeat("x", 2049)))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("oversized url status = %d, want 400", resp.StatusCode)
+	}
 }

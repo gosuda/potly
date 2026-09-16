@@ -51,7 +51,7 @@ go build -o potly .
 ./potly -portal     # public URLs appear on stderr; Ctrl-C tears the tunnel down
 ```
 
-Portal mode is the default way to run. For local-only use, drop the flag: `./potly` serves `http://localhost:8000`. Portal picks several relays automatically, so you get one public URL per relay.
+Portal mode is the default way to run. For local-only use, drop the flag: `./potly` serves `http://localhost:8000`. Portal picks several relays automatically, so you get one public URL per relay. `GET /qr?url=<link>` renders that link as a terminal QR code, so a phone camera can pick it up.
 
 `-name` sets your subdomain, and `-relays` pins a specific Portal domain when you want one:
 

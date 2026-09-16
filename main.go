@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+
+	"github.com/skip2/go-qrcode"
 )
 
 // version is overridden at release time via -ldflags "-X main.version=v0.1.0".
@@ -57,7 +59,7 @@ func (s *store) saveSlug(slug, target string) bool {
 }
 
 // slugs served by this mux itself must never be claimable.
-var reservedSlugs = map[string]bool{"shorten": true, "relays": true, "thumbnail.jpg": true}
+var reservedSlugs = map[string]bool{"shorten": true, "relays": true, "qr": true, "thumbnail.jpg": true}
 
 func validSlug(slug string) bool {
 	if len(slug) == 0 || len(slug) > 64 {
@@ -211,9 +213,28 @@ func (s *store) redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
+// qrHandler renders ?url= as a QR code in unicode half-blocks so a
+// terminal (or an agent's output) can hand the link to a phone camera
+// with no extra tooling. Plain text on purpose, like the GET API.
+func qrHandler(w http.ResponseWriter, r *http.Request) {
+	target := r.URL.Query().Get("url")
+	if target == "" || len(target) > 2048 {
+		shortenError(w, true, http.StatusBadRequest, "url query parameter is required (max 2048 chars)")
+		return
+	}
+	q, err := qrcode.New(target, qrcode.Medium)
+	if err != nil {
+		shortenError(w, true, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, q.ToSmallString(false))
+}
+
 func newMux(s *store) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/shorten", s.shorten)
+	mux.HandleFunc("/qr", qrHandler)
 	mux.HandleFunc("/thumbnail.jpg", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.Write(thumbnailJPEG)
