@@ -2,10 +2,10 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "potly",
   "version": "0.2.0",
-  "description": "A self-deployable, agent-friendly URL shortener.",
+  "description": "potly fills everyday potholes in multi-agent, multi-machine workflows: URLs too long for the terminal, links stranded between devices, files too big to share.",
   "author": {
     "name": "yoonhyunwoo"
   },
   "license": "MIT",
-  "keywords": ["url-shortener", "portal", "tunnel", "deploy"]
+  "keywords": ["url-shortener", "one-time-links", "secrets", "qr-code", "portal", "tunnel"]
 }
