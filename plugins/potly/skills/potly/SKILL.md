@@ -21,17 +21,18 @@ If the user doesn't answer, default to self-deploy.
 
 ## Official instance
 
-Probe `https://potly.<relay-domain>/` for each of Portal's bootstrap relay domains and use the first one that serves the potly page:
+A provider-run default instance is expected to be live (a VM running `ghcr.io/gosuda/potly:latest` under podman auto-update). Probe `https://potly.<relay-domain>/` and use the first one that serves the potly page:
 
 - gosunuts.xyz
+- kakashit.org
+- rly.best
 - portal.thumbgo.kr
 - portal.rabbitson87.dev
 - s-h.day
 - portal.dawnfullstack.com
-- kakashit.org
 - portal.damn.it.com
 
-Shorten against whichever answers: `curl "https://potly.<relay-domain>/shorten?url=<url-encoded target>"`. If none answers, tell the user no official instance is reachable and offer self-deploy instead.
+The bound relays rotate; `/shorten` on a live instance returns one short link per currently-connected relay, so probe once and reuse its output. After a restart the tunnel reconnects within about a minute — re-probe before concluding it is down. If nothing answers, tell the user no official instance is reachable and offer self-deploy instead.
 
 ## Self-deploy
 
