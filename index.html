@@ -1,0 +1,58 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>potly</title>
+<meta property="og:type" content="website">
+<meta property="og:title" content="potly">
+<meta property="og:description" content="URL shortener">
+<meta property="og:url" content="__BASE__/">
+<meta property="og:image" content="__BASE__/thumbnail.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="640">
+<meta property="og:image:height" content="360">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="potly">
+<meta name="twitter:description" content="URL shortener">
+<meta name="twitter:image" content="__BASE__/thumbnail.jpg">
+<style>
+body{font:16px system-ui;max-width:32rem;margin:4rem auto;padding:0 1rem}
+input{width:70%;padding:.5rem}
+button{padding:.5rem 1rem}
+#result{margin-top:1rem;word-break:break-all}
+</style></head>
+<body>
+<h1>potly</h1>
+<form id="f"><input id="url" type="url" placeholder="https://example.com/long/url" required>
+<button>Shorten</button></form>
+<div id="result"></div>
+<p><small><code>curl "http://HOST/shorten?url=&lt;your-url&gt;"</code> returns the short link.</small></p>
+<div id="relays" hidden><h3>Live relays</h3><ul id="relayList"></ul></div>
+<script>
+f.onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await fetch("/shorten", {method: "POST", body: JSON.stringify({url: url.value})});
+  const body = await r.json();
+  if (!r.ok) { result.textContent = "error: " + body.error; return; }
+  result.innerHTML = "";
+  (body.short_urls || [body.short_url]).forEach(function(u) {
+    var a = document.createElement("a");
+    a.href = u; a.textContent = u; a.target = "_blank";
+    result.appendChild(a); result.appendChild(document.createElement("br"));
+  });
+};
+
+async function pollRelays() {
+  try {
+    const r = await fetch("/relays");
+    const data = r.ok ? await r.json() : null;
+    const list = ((data && data.relays) || []).filter(x => x.public_url);
+    relays.hidden = list.length === 0;
+    relayList.innerHTML = list.map(function(x) {
+      var url = x.public_url || x.relay_url;
+      var tag = (x.connecting ? " (connecting)" : "") + (x.banned ? " (banned)" : "");
+      return '<li><a href="' + url + '" target="_blank">' + url + '</a>' + tag + '</li>';
+    }).join("");
+  } catch { relays.hidden = true; }
+}
+pollRelays();
+setInterval(pollRelays, 3000);
+</script>
+</body></html>
