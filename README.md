@@ -73,6 +73,8 @@ No Go toolchain? Run the published image instead: `docker run -p 8000:8000 -v po
 
 Daily dogfooding with agents drives the roadmap. Public file sharing that expires is next; every pothole found in real use becomes the next tool. No vendor lock-in, and everything stays under your control.
 
+Found a pothole potly does not fill yet? Open an issue, or send a PR; both are welcome.
+
 ## License
 
 [MIT](LICENSE).
