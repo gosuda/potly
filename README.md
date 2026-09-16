@@ -4,7 +4,7 @@
   <img src="potly-thumbnail.jpg" alt="potly: a single-binary URL shortener with a built-in public tunnel" width="360">
 </p>
 
-potly is a self-hostable URL shortener in a single binary. One command serves it locally and publishes a public HTTPS URL, with no deploy step.
+potly is a self-hostable URL shortener in a single binary. One command serves it locally and publishes a public HTTPS URL, with no deploy step. Custom slugs give links like `potly.thumbgo.kr/portfolio`.
 
 > **What is Portal?** A safe, free, open-source self-hosting tunnel: [github.com/gosuda/portal-tunnel](https://github.com/gosuda/portal-tunnel).
 
