@@ -169,3 +169,103 @@ func TestQR(t *testing.T) {
 		t.Fatalf("oversized url status = %d, want 400", resp.StatusCode)
 	}
 }
+
+func TestOneTimeLink(t *testing.T) {
+	srv := httptest.NewServer(newMux(newStore()))
+	defer srv.Close()
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	resp, err := client.Get(srv.URL + "/shorten?url=https://example.com/once&once=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	code := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(body)), srv.URL+"/"))
+	if code == "" || strings.Contains(code, "/") {
+		t.Fatalf("unexpected shorten response %q", body)
+	}
+
+	// the first open is a confirm page so chat previews do not burn the link
+	resp, err = client.Get(srv.URL + "/" + code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("confirm page status = %d", resp.StatusCode)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(page), `href="/`+code+`/reveal"`) {
+		t.Fatalf("confirm page missing reveal link: %q", page)
+	}
+
+	resp, err = client.Get(srv.URL + "/" + code + "/reveal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "https://example.com/once" {
+		t.Fatalf("reveal = %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	// burned after the single reveal
+	resp, _ = client.Get(srv.URL + "/" + code)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("post-burn status = %d", resp.StatusCode)
+	}
+	resp, _ = client.Get(srv.URL + "/" + code + "/reveal")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("post-burn reveal status = %d", resp.StatusCode)
+	}
+}
+
+func TestOneTimeSecret(t *testing.T) {
+	srv := httptest.NewServer(newMux(newStore()))
+	defer srv.Close()
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	resp, err := client.Post(srv.URL+"/s", "text/plain", strings.NewReader("hunter2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("secret post status = %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	code := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(body)), srv.URL+"/"))
+	if code == "" || strings.Contains(code, "/") {
+		t.Fatalf("unexpected secret response %q", body)
+	}
+
+	resp, _ = client.Get(srv.URL + "/s")
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /s status = %d", resp.StatusCode)
+	}
+
+	resp, _ = client.Get(srv.URL + "/" + code)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("secret confirm page status = %d", resp.StatusCode)
+	}
+	resp, err = client.Get(srv.URL + "/" + code + "/reveal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("secret reveal status = %d", resp.StatusCode)
+	}
+	payload, _ := io.ReadAll(resp.Body)
+	if string(payload) != "hunter2" {
+		t.Fatalf("revealed payload = %q", payload)
+	}
+	resp, _ = client.Get(srv.URL + "/" + code + "/reveal")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("second reveal status = %d", resp.StatusCode)
+	}
+
+	resp, _ = client.Post(srv.URL+"/s", "text/plain", strings.NewReader(""))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty payload status = %d", resp.StatusCode)
+	}
+}

@@ -51,7 +51,7 @@ go build -o potly .
 ./potly -portal     # public URLs appear on stderr; Ctrl-C tears the tunnel down
 ```
 
-Portal mode is the default way to run. For local-only use, drop the flag: `./potly` serves `http://localhost:8000`. Portal picks several relays automatically, so you get one public URL per relay. `GET /qr?url=<link>` renders that link as a terminal QR code, so a phone camera can pick it up.
+Portal mode is the default way to run. For local-only use, drop the flag: `./potly` serves `http://localhost:8000`. Portal picks several relays automatically, so you get one public URL per relay. `GET /qr?url=<link>` renders that link as a terminal QR code, so a phone camera can pick it up. One-time links take `&once=1` and open exactly once, guarded by a confirm page; `POST /s` with text as the body shares a secret the same way.
 
 `-name` sets your subdomain, and `-relays` pins a specific Portal domain when you want one:
 
@@ -63,7 +63,7 @@ No Go toolchain? Run the published image instead: `docker run -p 8000:8000 -v po
 
 ## What's next
 
-Daily dogfooding with agents drives the roadmap: one-time URLs, public file sharing that expires, and more. The target is friction everyone tolerates, like a link that wraps into a mess or a file too big for a chat that falls back to Google Drive. No vendor lock-in, and everything stays under your control.
+Daily dogfooding with agents drives the roadmap: public file sharing that expires, and more. The target is friction everyone tolerates, like a link that wraps into a mess or a file too big for a chat that falls back to Google Drive. No vendor lock-in, and everything stays under your control.
 
 ## License
 

@@ -67,9 +67,11 @@ Returns the short link as plain text — one line per currently-connected relay 
 
 A POST with a JSON body (`{"url": "..."}`) also works and additionally returns `short_urls` (the full list) alongside `short_url` (the first one), for callers that want structured output.
 
-A custom slug makes the link `HOST/<slug>` instead of a random code: add `&slug=portfolio` to the GET, or `"slug": "portfolio"` to the POST body. Slugs are 1-64 chars of letters, digits, `-` or `_`; a taken slug returns `409 slug already taken`, and the reserved paths (`shorten`, `relays`, `qr`, `thumbnail.jpg`) are rejected. Reach for this whenever the user asks for a memorable or branded link — a portfolio at `/portfolio`, a demo at `/demo`.
+A custom slug makes the link `HOST/<slug>` instead of a random code: add `&slug=portfolio` to the GET, or `"slug": "portfolio"` to the POST body. Slugs are 1-64 chars of letters, digits, `-` or `_`; a taken slug returns `409 slug already taken`, and the reserved paths (`shorten`, `relays`, `qr`, `s`, `thumbnail.jpg`) are rejected. Reach for this whenever the user asks for a memorable or branded link — a portfolio at `/portfolio`, a demo at `/demo`.
 
 Phone handoff: `GET /qr?url=<link>` returns the link as a QR code drawn with unicode half-blocks, plain text like everything else. Print it straight to the terminal when the user will likely open the link on their phone.
+
+One-time shares: add `&once=1` (GET) or `"once": true` (POST) to `/shorten` and the link opens exactly once. `POST /s` with the raw text as the request body mints a one-time text secret (`curl -d "$TOKEN" HOST/s`). Both first serve a confirm page at `/<code>` and burn on `/<code>/reveal`, so chat previews cannot consume them silently — when the user asks to share a password, token, or anything sensitive, use `/s` instead of pasting it into the chat.
 
 ## Failure notes
 

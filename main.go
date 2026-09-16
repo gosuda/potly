@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"io"
 	"strings"
 	"sync"
 
@@ -19,13 +20,19 @@ import (
 // version is overridden at release time via -ldflags "-X main.version=v0.1.0".
 var version = "dev"
 
+type link struct {
+	target string // redirect URL, or the payload text for secrets
+	once   bool   // burn after the reveal click
+	secret bool   // serve target as plain text instead of redirecting
+}
+
 type store struct {
 	mu    sync.Mutex
-	links map[string]string
+	links map[string]link
 }
 
 func newStore() *store {
-	return &store{links: make(map[string]string)}
+	return &store{links: make(map[string]link)}
 }
 
 func randCode() string {
@@ -34,13 +41,13 @@ func randCode() string {
 	return base64.RawURLEncoding.EncodeToString(b)[:6]
 }
 
-func (s *store) save(target string) (string, error) {
+func (s *store) save(l link) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for range 5 {
 		code := randCode()
 		if _, exists := s.links[code]; !exists {
-			s.links[code] = target
+			s.links[code] = l
 			return code, nil
 		}
 	}
@@ -48,18 +55,18 @@ func (s *store) save(target string) (string, error) {
 }
 
 // saveSlug claims a caller-chosen slug; false means it is already taken.
-func (s *store) saveSlug(slug, target string) bool {
+func (s *store) saveSlug(slug string, l link) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.links[slug]; exists {
 		return false
 	}
-	s.links[slug] = target
+	s.links[slug] = l
 	return true
 }
 
 // slugs served by this mux itself must never be claimable.
-var reservedSlugs = map[string]bool{"shorten": true, "relays": true, "qr": true, "thumbnail.jpg": true}
+var reservedSlugs = map[string]bool{"shorten": true, "relays": true, "qr": true, "s": true, "thumbnail.jpg": true}
 
 func validSlug(slug string) bool {
 	if len(slug) == 0 || len(slug) > 64 {
@@ -75,11 +82,19 @@ func validSlug(slug string) bool {
 	return true
 }
 
-func (s *store) get(code string) (string, bool) {
+func (s *store) get(code string) (link, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	target, ok := s.links[code]
-	return target, ok
+	l, ok := s.links[code]
+	return l, ok
+}
+
+// burn deletes a one-time link before it is served, so an aborted or
+// replayed request cannot reveal it a second time.
+func (s *store) burn(code string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.links, code)
 }
 
 func respondJSON(w http.ResponseWriter, status int, obj any) {
@@ -94,14 +109,18 @@ func respondJSON(w http.ResponseWriter, status int, obj any) {
 func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 	plain := r.Method == http.MethodGet
 	var target, slug string
+	var once bool
 	switch r.Method {
 	case http.MethodGet:
-		target = r.URL.Query().Get("url")
-		slug = r.URL.Query().Get("slug")
+		q := r.URL.Query()
+		target = q.Get("url")
+		slug = q.Get("slug")
+		once = q.Get("once") == "1" || q.Get("once") == "true"
 	case http.MethodPost:
 		var body struct {
 			URL  string `json:"url"`
 			Slug string `json:"slug"`
+			Once bool   `json:"once"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -110,6 +129,7 @@ func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 		}
 		target = body.URL
 		slug = body.Slug
+		once = body.Once
 	default:
 		shortenError(w, plain, http.StatusMethodNotAllowed, "GET or POST only")
 		return
@@ -131,28 +151,19 @@ func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 			shortenError(w, plain, http.StatusBadRequest, "slug is reserved")
 			return
 		}
-		if !s.saveSlug(slug, target) {
+		if !s.saveSlug(slug, link{target: target, once: once}) {
 			shortenError(w, plain, http.StatusConflict, "slug already taken")
 			return
 		}
 		code = slug
 	} else {
-		code, err = s.save(target)
+		code, err = s.save(link{target: target, once: once})
 		if err != nil {
 			shortenError(w, plain, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
-	bases := []string{publicBaseURL(r)}
-	if activeRelayBaseURLs != nil {
-		if extra := activeRelayBaseURLs(); len(extra) > 0 {
-			bases = extra
-		}
-	}
-	shortURLs := make([]string, len(bases))
-	for i, base := range bases {
-		shortURLs[i] = fmt.Sprintf("%s/%s", base, code)
-	}
+	shortURLs := s.shortURLs(r, code)
 	if plain {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		for _, u := range shortURLs {
@@ -198,19 +209,80 @@ func shortenError(w http.ResponseWriter, plain bool, status int, msg string) {
 //go:embed index.html
 var indexHTML string
 
+// shortURLs returns one short link per currently connected relay, or a
+// single localhost link in local-only mode.
+func (s *store) shortURLs(r *http.Request, code string) []string {
+	bases := []string{publicBaseURL(r)}
+	if activeRelayBaseURLs != nil {
+		if extra := activeRelayBaseURLs(); len(extra) > 0 {
+			bases = extra
+		}
+	}
+	out := make([]string, len(bases))
+	for i, base := range bases {
+		out[i] = fmt.Sprintf("%s/%s", base, code)
+	}
+	return out
+}
+
+// revealPage guards one-time links and secrets: chat previews and other
+// GET bots stop here, and only a human following the link burns it.
+const revealPage = `<!doctype html><meta charset="utf-8"><title>potly</title><p>This link works exactly once.</p><p><a href="/%s/reveal">Open it</a></p>`
+
 func (s *store) redirect(w http.ResponseWriter, r *http.Request) {
-	code := strings.TrimPrefix(r.URL.Path, "/")
-	if code == "" {
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	if path == "" {
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(strings.ReplaceAll(indexHTML, "__BASE__", publicBaseURL(r))))
 		return
 	}
-	target, ok := s.get(code)
+	name, action, _ := strings.Cut(path, "/")
+	l, ok := s.get(name)
 	if !ok {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+	if l.once || l.secret {
+		if action != "reveal" {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprintf(w, revealPage, name)
+			return
+		}
+		s.burn(name)
+		if l.secret {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			fmt.Fprint(w, l.target)
+			return
+		}
+	}
+	http.Redirect(w, r, l.target, http.StatusFound)
+}
+
+// newSecret stores a POSTed text payload and hands back a URL that
+// shows it exactly once: curl -d "$TOKEN" HOST/s
+func (s *store) newSecret(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		shortenError(w, true, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	payload, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		shortenError(w, true, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(payload) == 0 {
+		shortenError(w, true, http.StatusBadRequest, "empty payload")
+		return
+	}
+	code, err := s.save(link{target: string(payload), once: true, secret: true})
+	if err != nil {
+		shortenError(w, true, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	for _, u := range s.shortURLs(r, code) {
+		fmt.Fprintln(w, u)
+	}
 }
 
 // maxQRURLLen bounds the qr endpoint's input; QR capacity itself is 2953
@@ -235,6 +307,7 @@ func qrHandler(w http.ResponseWriter, r *http.Request) {
 func newMux(s *store) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/shorten", s.shorten)
+	mux.HandleFunc("/s", s.newSecret)
 	mux.HandleFunc("/qr", qrHandler)
 	mux.HandleFunc("/thumbnail.jpg", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
