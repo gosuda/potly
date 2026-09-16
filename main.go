@@ -114,7 +114,7 @@ func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 			Slug string `json:"slug"`
 			Once bool   `json:"once"`
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			shortenError(w, plain, http.StatusBadRequest, err.Error())
 			return
@@ -157,10 +157,7 @@ func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 	}
 	shortURLs := s.shortURLs(r, code)
 	if plain {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		for _, u := range shortURLs {
-			fmt.Fprintln(w, u)
-		}
+		s.respondLinks(w, r, code)
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]any{
@@ -244,7 +241,7 @@ func (s *store) newSecret(w http.ResponseWriter, r *http.Request) {
 		shortenError(w, true, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
-	payload, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	payload, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 	if err != nil {
 		shortenError(w, true, http.StatusBadRequest, err.Error())
 		return
@@ -258,11 +255,17 @@ func (s *store) newSecret(w http.ResponseWriter, r *http.Request) {
 		shortenError(w, true, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.respondLinks(w, r, code)
+}
+
+func (s *store) respondLinks(w http.ResponseWriter, r *http.Request, code string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	for _, u := range s.shortURLs(r, code) {
 		fmt.Fprintln(w, u)
 	}
 }
+
+const maxBodyBytes = 1 << 20
 
 const maxQRURLLen = 2048
 
