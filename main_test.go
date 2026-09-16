@@ -164,7 +164,7 @@ func TestQR(t *testing.T) {
 		t.Fatalf("missing url status = %d, want 400", resp.StatusCode)
 	}
 
-	resp, _ = http.Get(srv.URL + "/qr?url=" + url.QueryEscape(strings.Repeat("x", 2049)))
+	resp, _ = http.Get(srv.URL + "/qr?url=" + url.QueryEscape(strings.Repeat("x", maxQRURLLen+1)))
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("oversized url status = %d, want 400", resp.StatusCode)
 	}

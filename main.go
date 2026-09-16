@@ -213,12 +213,13 @@ func (s *store) redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
-// qrHandler renders ?url= as a QR code in unicode half-blocks so a
-// terminal (or an agent's output) can hand the link to a phone camera
-// with no extra tooling. Plain text on purpose, like the GET API.
+// maxQRURLLen bounds the qr endpoint's input; QR capacity itself is 2953
+// bytes at the lowest error correction, and a longer payload never scans.
+const maxQRURLLen = 2048
+
 func qrHandler(w http.ResponseWriter, r *http.Request) {
 	target := r.URL.Query().Get("url")
-	if target == "" || len(target) > 2048 {
+	if target == "" || len(target) > maxQRURLLen {
 		shortenError(w, true, http.StatusBadRequest, "url query parameter is required (max 2048 chars)")
 		return
 	}
