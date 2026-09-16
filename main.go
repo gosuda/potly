@@ -45,6 +45,34 @@ func (s *store) save(target string) (string, error) {
 	return "", fmt.Errorf("could not allocate a short code")
 }
 
+// saveSlug claims a caller-chosen slug; false means it is already taken.
+func (s *store) saveSlug(slug, target string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.links[slug]; exists {
+		return false
+	}
+	s.links[slug] = target
+	return true
+}
+
+// slugs served by this mux itself must never be claimable.
+var reservedSlugs = map[string]bool{"shorten": true, "relays": true, "thumbnail.jpg": true}
+
+func validSlug(slug string) bool {
+	if len(slug) == 0 || len(slug) > 64 {
+		return false
+	}
+	for _, r := range slug {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (s *store) get(code string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -63,13 +91,15 @@ func respondJSON(w http.ResponseWriter, status int, obj any) {
 // straight into its output without parsing JSON).
 func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 	plain := r.Method == http.MethodGet
-	var target string
+	var target, slug string
 	switch r.Method {
 	case http.MethodGet:
 		target = r.URL.Query().Get("url")
+		slug = r.URL.Query().Get("slug")
 	case http.MethodPost:
 		var body struct {
-			URL string `json:"url"`
+			URL  string `json:"url"`
+			Slug string `json:"slug"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -77,6 +107,7 @@ func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		target = body.URL
+		slug = body.Slug
 	default:
 		shortenError(w, plain, http.StatusMethodNotAllowed, "GET or POST only")
 		return
@@ -87,10 +118,28 @@ func (s *store) shorten(w http.ResponseWriter, r *http.Request) {
 		shortenError(w, plain, http.StatusBadRequest, "url must be absolute http(s)")
 		return
 	}
-	code, err := s.save(target)
-	if err != nil {
-		shortenError(w, plain, http.StatusInternalServerError, err.Error())
-		return
+
+	var code string
+	if slug != "" {
+		if !validSlug(slug) {
+			shortenError(w, plain, http.StatusBadRequest, "slug must be 1-64 letters, digits, '-' or '_'")
+			return
+		}
+		if reservedSlugs[slug] {
+			shortenError(w, plain, http.StatusBadRequest, "slug is reserved")
+			return
+		}
+		if !s.saveSlug(slug, target) {
+			shortenError(w, plain, http.StatusConflict, "slug already taken")
+			return
+		}
+		code = slug
+	} else {
+		code, err = s.save(target)
+		if err != nil {
+			shortenError(w, plain, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	bases := []string{publicBaseURL(r)}
 	if activeRelayBaseURLs != nil {

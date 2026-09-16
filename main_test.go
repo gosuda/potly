@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -72,5 +73,59 @@ func TestShortenGET(t *testing.T) {
 	resp, _ = http.Get(srv.URL + "/shorten?url=not-a-url")
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid url status = %d", resp.StatusCode)
+	}
+}
+
+func TestCustomSlug(t *testing.T) {
+	srv := httptest.NewServer(newMux(newStore()))
+	defer srv.Close()
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	resp, err := client.Post(srv.URL+"/shorten", "application/json", strings.NewReader(`{"url":"https://example.com/me","slug":"portfolio"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("slug shorten status = %d", resp.StatusCode)
+	}
+	var out struct {
+		Code     string `json:"code"`
+		ShortURL string `json:"short_url"`
+	}
+	json.NewDecoder(resp.Body).Decode(&out)
+	if out.Code != "portfolio" || !strings.HasSuffix(out.ShortURL, "/portfolio") {
+		t.Fatalf("code/short_url = %q/%q", out.Code, out.ShortURL)
+	}
+
+	resp, err = client.Get(srv.URL + "/portfolio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "https://example.com/me" {
+		t.Fatalf("redirect = %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	resp, _ = client.Post(srv.URL+"/shorten", "application/json", strings.NewReader(`{"url":"https://example.com/other","slug":"portfolio"}`))
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate slug status = %d", resp.StatusCode)
+	}
+
+	for _, bad := range []string{"has space", "slash/slug", "shorten", strings.Repeat("x", 65)} {
+		body := fmt.Sprintf(`{"url":"https://example.com/x","slug":%q}`, bad)
+		resp, _ = client.Post(srv.URL+"/shorten", "application/json", strings.NewReader(body))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("slug %q status = %d, want 400", bad, resp.StatusCode)
+		}
+	}
+
+	resp, err = http.Get(srv.URL + "/shorten?url=https://example.com/cv&slug=cv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(line), "/cv") {
+		t.Fatalf("GET slug body = %q", line)
 	}
 }
