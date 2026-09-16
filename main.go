@@ -300,8 +300,52 @@ func qrHandler(w http.ResponseWriter, r *http.Request) {
 		shortenError(w, true, http.StatusBadRequest, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprint(w, q.ToSmallString(false))
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		writeQRHTML(w, q)
+		return
+	}
+	writeQR(w, q)
+}
+
+// writeQRHTML serves the code as a plain <img> page: pixel-exact
+// rendering for a browser, since terminal line spacing puts gaps
+// between module rows that scanners may not read.
+func writeQRHTML(w http.ResponseWriter, q *qrcode.QRCode) {
+	png, err := q.PNG(320)
+	if err != nil {
+		shortenError(w, true, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><title>potly</title><body style="margin:0;display:grid;place-items:center;height:100vh"><img alt="QR code" src="data:image/png;base64,%s"></body>`, base64.StdEncoding.EncodeToString(png))
+}
+
+// writeQR follows qrencode's ANSIUTF8 convention: light modules become
+// white glyphs, dark modules stay black (the escape's own background).
+// Only foreground colors carry the pattern, so the code survives
+// renderers that ignore background colors, and reads as black-on-white
+// on any terminal theme.
+func writeQR(w http.ResponseWriter, q *qrcode.QRCode) {
+	bm := q.Bitmap()
+	for y := 0; y < len(bm); y += 2 {
+		var row strings.Builder
+		row.WriteString("\033[40;37;1m")
+		for x := range bm[y] {
+			top, bottom := bm[y][x], y+1 < len(bm) && bm[y+1][x]
+			switch {
+			case top && bottom:
+				row.WriteRune(' ')
+			case top:
+				row.WriteRune('▄')
+			case bottom:
+				row.WriteRune('▀')
+			default:
+				row.WriteRune('█')
+			}
+		}
+		row.WriteString("\033[0m\n")
+		fmt.Fprint(w, row.String())
+	}
 }
 
 func newMux(s *store) *http.ServeMux {

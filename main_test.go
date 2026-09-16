@@ -153,10 +153,14 @@ func TestQR(t *testing.T) {
 		t.Fatalf("Content-Type = %q", ct)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	// unicode half-block renderer emits at least two of the three block glyphs
+	// the renderer paints light modules as white glyphs on an explicit
+	// black background (qrencode convention); the prefix must be present
+	if !strings.Contains(string(body), "\x1b[40;37;1m") {
+		t.Fatalf("qr body missing qrencode-style ANSI prefix: %q", body[:min(200, len(body))])
+	}
 	blocks := strings.Count(string(body), "█") + strings.Count(string(body), "▀") + strings.Count(string(body), "▄")
 	if blocks < 2 {
-		t.Fatalf("qr body has %d block glyphs, want a rendered code: %q", blocks, body)
+		t.Fatalf("qr body has %d block glyphs, want a rendered code", blocks)
 	}
 
 	resp, _ = http.Get(srv.URL + "/qr")
@@ -267,5 +271,24 @@ func TestOneTimeSecret(t *testing.T) {
 	resp, _ = client.Post(srv.URL+"/s", "text/plain", strings.NewReader(""))
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("empty payload status = %d", resp.StatusCode)
+	}
+}
+
+func TestQRHTMLForBrowsers(t *testing.T) {
+	srv := httptest.NewServer(newMux(newStore()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/qr?url=https://example.com/abc", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `src="data:image/png;base64,`) {
+		t.Fatalf("html page missing inline png: %q", body[:min(200, len(body))])
 	}
 }
